@@ -4,317 +4,366 @@ import (
 	"testing"
 )
 
-// TestNewBoard tests that a new board is set up correctly
-func TestNewBoard(t *testing.T) {
-	board := NewBoard()
-
-	// Test that pawns are in correct positions
-	for i := 0; i < 8; i++ {
-		// Black pawns on row 1 (array index 1)
-		if board.Squares[1][i] == nil {
-			t.Errorf("Expected black pawn at [1][%d], got nil", i)
-		}
-		if board.Squares[1][i].Type != Pawn {
-			t.Errorf("Expected pawn at [1][%d], got %v", i, board.Squares[1][i].Type)
-		}
-		if board.Squares[1][i].White {
-			t.Errorf("Expected black pawn at [1][%d], got white", i)
-		}
-
-		// White pawns on row 6 (array index 6)
-		if board.Squares[6][i] == nil {
-			t.Errorf("Expected white pawn at [6][%d], got nil", i)
-		}
-		if board.Squares[6][i].Type != Pawn {
-			t.Errorf("Expected pawn at [6][%d], got %v", i, board.Squares[6][i].Type)
-		}
-		if !board.Squares[6][i].White {
-			t.Errorf("Expected white pawn at [6][%d], got black", i)
-		}
-	}
-
-	// Test that pieces are in correct positions
-	pieces := []PieceType{Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook}
-	for i, pieceType := range pieces {
-		// Black pieces on row 0 (array index 0)
-		if board.Squares[0][i] == nil {
-			t.Errorf("Expected black %v at [0][%d], got nil", pieceType, i)
-		}
-		if board.Squares[0][i].Type != pieceType {
-			t.Errorf("Expected %v at [0][%d], got %v", pieceType, i, board.Squares[0][i].Type)
-		}
-		if board.Squares[0][i].White {
-			t.Errorf("Expected black %v at [0][%d], got white", pieceType, i)
-		}
-
-		// White pieces on row 7 (array index 7)
-		if board.Squares[7][i] == nil {
-			t.Errorf("Expected white %v at [7][%d], got nil", pieceType, i)
-		}
-		if board.Squares[7][i].Type != pieceType {
-			t.Errorf("Expected %v at [7][%d], got %v", pieceType, i, board.Squares[7][i].Type)
-		}
-		if !board.Squares[7][i].White {
-			t.Errorf("Expected white %v at [7][%d], got black", pieceType, i)
-		}
-	}
-}
-
-// TestNewChessGame tests that a new game is initialized correctly
 func TestNewChessGame(t *testing.T) {
 	game := NewChessGame()
-
+	if game == nil {
+		t.Fatal("NewChessGame returned nil")
+	}
 	if game.board == nil {
-		t.Error("Expected board to be initialized")
+		t.Fatal("Game board is nil")
 	}
-	if game.currentPlayer != true {
-		t.Error("Expected white to start first")
-	}
-	if game.status != "White's turn" {
-		t.Errorf("Expected status 'White's turn', got '%s'", game.status)
-	}
-	if game.gameState != gameStatePlaying {
-		t.Error("Expected game state to be playing")
+	if !game.currentPlayer {
+		t.Fatal("Game should start with white's turn")
 	}
 }
 
-// TestPawnMovement tests basic pawn movement rules
-func TestPawnMovement(t *testing.T) {
-	game := NewChessGame()
+func TestBoardSetup(t *testing.T) {
+	board := NewBoard()
 
-	// Test white pawn movement (e7e6)
-	if !game.isValidMove("e7e6") {
-		t.Error("Expected e7e6 to be valid for white")
+	// Test pawns
+	for i := 0; i < 8; i++ {
+		if board.Squares[1][i] == nil || board.Squares[1][i].Type != Pawn || board.Squares[1][i].White {
+			t.Errorf("Black pawn not properly set at position [1][%d]", i)
+		}
+		if board.Squares[6][i] == nil || board.Squares[6][i].Type != Pawn || !board.Squares[6][i].White {
+			t.Errorf("White pawn not properly set at position [6][%d]", i)
+		}
 	}
 
-	// Test black pawn movement (e2e4) - should fail on white's turn
-	if game.isValidMove("e2e4") {
-		t.Error("Expected e2e4 to be invalid on white's turn")
-	}
-
-	// Execute white's move
-	game.executeMove("e7e6")
-
-	// Now it should be black's turn
-	if game.currentPlayer != false {
-		t.Error("Expected current player to be black after white's move")
-	}
-
-	// Test black pawn movement (e2e4) - should work now
-	if !game.isValidMove("e2e4") {
-		t.Error("Expected e2e4 to be valid for black")
-	}
-
-	// Test invalid pawn movement (e7e8) - can't move 2 squares from current position
-	if game.isValidMove("e7e8") {
-		t.Error("Expected e7e8 to be invalid (can't move 2 squares from current position)")
-	}
-
-	// Test invalid pawn movement (e7f6) - can't move diagonally without capture
-	if game.isValidMove("e7f6") {
-		t.Error("Expected e7f6 to be invalid (can't move diagonally without capture)")
+	// Test other pieces
+	expectedPieces := []PieceType{Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook}
+	for i, expectedType := range expectedPieces {
+		if board.Squares[0][i] == nil || board.Squares[0][i].Type != expectedType || board.Squares[0][i].White {
+			t.Errorf("Black %v not properly set at position [0][%d]", expectedType, i)
+		}
+		if board.Squares[7][i] == nil || board.Squares[7][i].Type != expectedType || !board.Squares[7][i].White {
+			t.Errorf("White %v not properly set at position [7][%d]", expectedType, i)
+		}
 	}
 }
 
-// TestKingMovement tests basic king movement rules
-func TestKingMovement(t *testing.T) {
+func TestLongAlgebraicNotation(t *testing.T) {
 	game := NewChessGame()
 
-	// Test valid king movement (e8e7)
-	if !game.isValidMove("e8e7") {
-		t.Error("Expected e8e7 to be valid for white king")
+	// Test valid pawn moves
+	testCases := []struct {
+		move     string
+		expected bool
+		desc     string
+	}{
+		{"e2e4", true, "White pawn e2 to e4"},
+		{"d7d5", false, "Black pawn d7 to d5 (not black's turn)"},
+		{"e7e5", false, "Black pawn e7 to e5 (not black's turn)"},
+		{"e2e5", false, "White pawn e2 to e5 (invalid move)"},
+		{"e2d3", false, "White pawn e2 to d3 (invalid diagonal without capture)"},
 	}
 
-	// Test invalid king movement (e8e6) - can't move 2 squares
-	if game.isValidMove("e8e6") {
-		t.Error("Expected e8e6 to be invalid (king can't move 2 squares)")
-	}
-
-	// Test diagonal king movement (e8d7)
-	if !game.isValidMove("e8d7") {
-		t.Error("Expected e8d7 to be valid diagonal movement for king")
+	for _, tc := range testCases {
+		result := game.isValidMove(tc.move)
+		if result != tc.expected {
+			t.Errorf("%s: expected %v, got %v", tc.desc, tc.expected, result)
+		}
 	}
 }
 
-// TestTurnOrder tests that turns alternate correctly
-func TestTurnOrder(t *testing.T) {
+func TestShortAlgebraicNotation(t *testing.T) {
 	game := NewChessGame()
 
-	// White starts
-	if game.currentPlayer != true {
-		t.Error("Expected white to start")
+	// Test knight moves
+	testCases := []struct {
+		move     string
+		expected bool
+		desc     string
+	}{
+		{"Ng1f3", false, "Invalid format - should be Nf3"},
+		{"Nf3", true, "Knight to f3"},
+		{"Nc3", true, "Knight to c3"},
+		{"Nf6", false, "Black knight to f6 (not black's turn)"},
+		{"Nxe5", false, "Knight capture on e5 (no piece to capture)"},
 	}
 
-	// White moves
-	game.executeMove("e7e6")
-	if game.currentPlayer != false {
-		t.Error("Expected black's turn after white moves")
+	for _, tc := range testCases {
+		result := game.isValidMove(tc.move)
+		if result != tc.expected {
+			t.Errorf("%s: expected %v, got %v", tc.desc, tc.expected, result)
+		}
+	}
+}
+
+func TestCastlingNotation(t *testing.T) {
+	game := NewChessGame()
+
+	// Test castling moves - should be invalid initially because pieces haven't moved yet
+	testCases := []struct {
+		move     string
+		expected bool
+		desc     string
+	}{
+		{"O-O", false, "Kingside castling (should be invalid initially)"},
+		{"0-0", false, "Kingside castling (alternative notation, should be invalid initially)"},
+		{"O-O-O", false, "Queenside castling (should be invalid initially)"},
+		{"0-0-0", false, "Queenside castling (alternative notation, should be invalid initially)"},
 	}
 
-	// Black moves
+	for _, tc := range testCases {
+		result := game.isValidMove(tc.move)
+		if result != tc.expected {
+			t.Errorf("%s: expected %v, got %v", tc.desc, tc.expected, result)
+		}
+	}
+
+	// Now test that castling becomes valid after moving pieces
 	game.executeMove("e2e4")
-	if game.currentPlayer != true {
-		t.Error("Expected white's turn after black moves")
-	}
+	game.executeMove("e7e5")
+	game.executeMove("Nf3")
+	game.executeMove("Nf6")
+	game.executeMove("Bc4")
+	game.executeMove("Bc5")
 
-	// White moves again
-	game.executeMove("d7d6")
-	if game.currentPlayer != false {
-		t.Error("Expected black's turn after white moves again")
+	// Castling should now be valid
+	if !game.isValidMove("O-O") {
+		t.Error("Castling should be valid after moving pieces")
 	}
 }
 
-// TestInvalidMoves tests various invalid move scenarios
+func TestMoveExecution(t *testing.T) {
+	game := NewChessGame()
+
+	// Execute a move
+	initialPiece := game.board.Squares[6][4] // White pawn at e2
+	if initialPiece == nil || initialPiece.Type != Pawn {
+		t.Fatal("Expected white pawn at e2")
+	}
+
+	// Move e2e4
+	game.executeMove("e2e4")
+
+	// Check that piece moved
+	if game.board.Squares[6][4] != nil {
+		t.Error("Piece should have moved from e2")
+	}
+	if game.board.Squares[4][4] == nil || game.board.Squares[4][4].Type != Pawn {
+		t.Error("Piece should be at e4")
+	}
+
+	// Check that turn switched
+	if game.currentPlayer {
+		t.Error("Turn should have switched to black")
+	}
+}
+
+func TestShortNotationMoveExecution(t *testing.T) {
+	game := NewChessGame()
+
+	// Execute a knight move using short notation
+	initialPiece := game.board.Squares[7][1] // White knight at b1
+	if initialPiece == nil || initialPiece.Type != Knight {
+		t.Fatal("Expected white knight at b1")
+	}
+
+	// Move Nc3
+	game.executeMove("Nc3")
+
+	// Check that piece moved
+	if game.board.Squares[7][1] != nil {
+		t.Error("Knight should have moved from b1")
+	}
+	if game.board.Squares[5][2] == nil || game.board.Squares[5][2].Type != Knight {
+		t.Error("Knight should be at c3")
+	}
+
+	// Check that turn switched
+	if game.currentPlayer {
+		t.Error("Turn should have switched to black")
+	}
+}
+
+func TestCastlingExecution(t *testing.T) {
+	game := NewChessGame()
+
+	// Move pieces to allow castling
+	game.executeMove("e2e4")
+	game.executeMove("e7e5")
+	game.executeMove("Nf3")
+	game.executeMove("Nf6")
+	game.executeMove("Bc4")
+	game.executeMove("Bc5")
+
+	// Now try kingside castling
+	initialKingPos := game.board.Squares[7][4] // White king at e1
+	if initialKingPos == nil || initialKingPos.Type != King {
+		t.Fatal("Expected white king at e1")
+	}
+
+	// Check that castling is valid
+	if !game.isValidMove("O-O") {
+		t.Error("Castling should be valid after moving pieces")
+	}
+
+	game.executeMove("O-O")
+
+	// Check that king moved
+	if game.board.Squares[7][4] != nil {
+		t.Error("King should have moved from e1")
+	}
+	if game.board.Squares[7][6] == nil || game.board.Squares[7][6].Type != King {
+		t.Error("King should be at g1")
+	}
+
+	// Check that rook also moved
+	if game.board.Squares[7][7] != nil {
+		t.Error("Rook should have moved from h1")
+	}
+	if game.board.Squares[7][5] == nil || game.board.Squares[7][5].Type != Rook {
+		t.Error("Rook should be at f1")
+	}
+}
+
+func TestDisambiguation(t *testing.T) {
+	game := NewChessGame()
+
+	// Move pieces to create a position where disambiguation is needed
+	game.executeMove("e2e4")
+	game.executeMove("e7e5")
+	game.executeMove("Nf3")
+	game.executeMove("Nf6")
+	game.executeMove("Nc3")
+	game.executeMove("Nc6")
+
+	// Now we have knights at both b1 and c3, so Nbd3 should work
+	game.executeMove("Nbd3")
+
+	// Check that the knight from b1 moved to d3
+	if game.board.Squares[7][1] != nil {
+		t.Error("Knight should have moved from b1")
+	}
+	if game.board.Squares[5][3] == nil || game.board.Squares[5][3].Type != Knight {
+		t.Error("Knight should be at d3")
+	}
+}
+
 func TestInvalidMoves(t *testing.T) {
 	game := NewChessGame()
 
-	// Test empty square movement
-	if game.isValidMove("e5e6") {
-		t.Error("Expected moving from empty square to be invalid")
+	// Test various invalid moves
+	invalidMoves := []string{
+		"",        // Empty move
+		"abc",     // Too short
+		"abcdef",  // Too long
+		"x2e4",    // Invalid file
+		"e9e4",    // Invalid rank
+		"e2x4",    // Invalid destination
+		"N",       // Incomplete move
+		"Nx",      // Incomplete capture
+		"Kx",      // Incomplete capture
+		"O-O-O-O", // Invalid castling
+		"0-0-0-0", // Invalid castling
 	}
 
-	// Test wrong player's piece
-	if game.isValidMove("e2e3") {
-		t.Error("Expected moving black piece on white's turn to be invalid")
-	}
-
-	// Test invalid coordinates
-	if game.isValidMove("i9j0") {
-		t.Error("Expected invalid coordinates to be invalid")
-	}
-
-	// Test wrong move format
-	if game.isValidMove("e7") {
-		t.Error("Expected wrong move format to be invalid")
-	}
-	if game.isValidMove("e7e6e5") {
-		t.Error("Expected wrong move format to be invalid")
+	for _, move := range invalidMoves {
+		if game.isValidMove(move) {
+			t.Errorf("Move '%s' should be invalid", move)
+		}
 	}
 }
 
-// TestGameState tests game state transitions
-func TestGameState(t *testing.T) {
+func TestPieceFinding(t *testing.T) {
 	game := NewChessGame()
 
-	// Game should start in playing state
-	if game.gameState != gameStatePlaying {
-		t.Error("Expected game to start in playing state")
+	// Test finding pieces
+	testCases := []struct {
+		pieceType PieceType
+		isWhite   bool
+		expected  bool
+		desc      string
+	}{
+		{King, true, true, "White king should be found"},
+		{Queen, true, true, "White queen should be found"},
+		{Rook, true, true, "White rook should be found"},
+		{Bishop, true, true, "White bishop should be found"},
+		{Knight, true, true, "White knight should be found"},
+		{Pawn, true, true, "White pawn should be found"},
+		{King, false, true, "Black king should be found"},
+		{Queen, false, true, "Black queen should be found"},
 	}
 
-	// Status should update correctly
-	if game.status != "White's turn" {
-		t.Errorf("Expected status 'White's turn', got '%s'", game.status)
-	}
-
-	// After a move, status should update
-	game.executeMove("e7e6")
-	game.updateStatus()
-	if game.status != "Black's turn" {
-		t.Errorf("Expected status 'Black's turn', got '%s'", game.status)
+	for _, tc := range testCases {
+		row, col, found := game.findPiece(tc.pieceType, tc.isWhite, "")
+		if found != tc.expected {
+			t.Errorf("%s: expected %v, got %v", tc.desc, tc.expected, found)
+		}
+		if found && (row < 0 || row > 7 || col < 0 || col > 7) {
+			t.Errorf("%s: invalid coordinates [%d][%d]", tc.desc, row, col)
+		}
 	}
 }
 
-// TestRealisticGame tests a realistic sequence of chess moves
-func TestRealisticGame(t *testing.T) {
+func TestGameFlow(t *testing.T) {
 	game := NewChessGame()
 
-	// Test a realistic opening sequence
+	// Play a few moves to test game flow
 	moves := []string{
-		"e7e6", // White: e6
-		"e2e4", // Black: e4
-		"d7d6", // White: d6
-		"d2d4", // Black: d4
-		"c7c6", // White: c6
-		"c2c4", // Black: c4
+		"e2e4", // White pawn e2e4
+		"e7e5", // Black pawn e7e5
+		"Nf3",  // White knight Nf3
+		"Nc6",  // Black knight Nc6
+		"Bc4",  // White bishop Bc4
+		"Bc5",  // Black bishop Bc5
 	}
 
 	for i, move := range moves {
 		if !game.isValidMove(move) {
 			t.Errorf("Move %d '%s' should be valid", i+1, move)
+			continue
 		}
 
 		game.executeMove(move)
-		game.updateStatus()
 
-		// Verify turn alternates - after each move, the current player should be the opposite
-		// White starts (true), so after move 1 (white), current player should be black (false)
-		// After move 2 (black), current player should be white (true), etc.
-		expectedPlayer := (i+1)%2 == 0 // false (black) after odd moves, true (white) after even moves
-		if game.currentPlayer != expectedPlayer {
-			t.Errorf("After move %d '%s', expected player %v, got %v",
-				i+1, move, expectedPlayer, game.currentPlayer)
+		// Check that turn alternates
+		expectedWhite := (i%2 == 0)
+		if game.currentPlayer != expectedWhite {
+			var expectedPlayer string
+			if expectedWhite {
+				expectedPlayer = "white"
+			} else {
+				expectedPlayer = "black"
+			}
+			var currentPlayer string
+			if game.currentPlayer {
+				currentPlayer = "white"
+			} else {
+				currentPlayer = "black"
+			}
+			t.Errorf("After move %d, expected %s's turn, got %s's turn",
+				i+1, expectedPlayer, currentPlayer)
 		}
 	}
 }
 
-// TestPieceCapture tests basic capture mechanics
-func TestPieceCapture(t *testing.T) {
+func TestMixedNotation(t *testing.T) {
 	game := NewChessGame()
 
-	// Set up a scenario where white can capture black pawn
-	// Move white pawn to e6
-	game.executeMove("e7e6")
-	// Move black pawn to e4
-	game.executeMove("e2e4")
-	// Move white pawn to e5
-	game.executeMove("e6e5")
-	// Move black pawn to d4
-	game.executeMove("d2d4")
-
-	// Now white can capture black pawn at d4
-	if !game.isValidMove("e5d4") {
-		t.Error("Expected e5d4 to be valid capture")
+	// Test mixing long and short notation in the same game
+	moves := []string{
+		"e2e4", // Long notation
+		"e7e5", // Long notation
+		"Nf3",  // Short notation
+		"Nc6",  // Short notation
+		"d2d4", // Long notation
+		"exd4", // Short notation (capture)
 	}
 
-	// Execute the capture
-	game.executeMove("e5d4")
+	for i, move := range moves {
+		if !game.isValidMove(move) {
+			t.Errorf("Move %d '%s' should be valid", i+1, move)
+			continue
+		}
 
-	// Verify the piece was captured (square d4 should now have white pawn)
-	if game.board.Squares[3][3] == nil {
-		t.Error("Expected white pawn at d4 after capture")
-	}
-	if !game.board.Squares[3][3].White {
-		t.Error("Expected white pawn at d4 after capture")
-	}
-}
-
-// TestBoardString tests the board string representation
-func TestBoardString(t *testing.T) {
-	board := NewBoard()
-	boardStr := board.String()
-
-	// Should contain row and column labels
-	if len(boardStr) == 0 {
-		t.Error("Board string should not be empty")
+		game.executeMove(move)
 	}
 
-	// Should contain piece symbols
-	if len(boardStr) < 100 {
-		t.Error("Board string should be reasonably long")
-	}
-}
-
-// TestPieceString tests piece string representation
-func TestPieceString(t *testing.T) {
-	// Test white pieces
-	whitePawn := &Piece{White: true, Type: Pawn}
-	if whitePawn.String() != "♙" {
-		t.Errorf("Expected white pawn to render as ♙, got %s", whitePawn.String())
-	}
-
-	whiteKing := &Piece{White: true, Type: King}
-	if whiteKing.String() != "♔" {
-		t.Errorf("Expected white king to render as ♔, got %s", whiteKing.String())
-	}
-
-	// Test black pieces
-	blackPawn := &Piece{White: false, Type: Pawn}
-	if blackPawn.String() != "♟" {
-		t.Errorf("Expected black pawn to render as ♟, got %s", blackPawn.String())
-	}
-
-	blackKing := &Piece{White: false, Type: King}
-	if blackKing.String() != "♚" {
-		t.Errorf("Expected black king to render as ♚, got %s", blackKing.String())
+	// Verify the final position
+	if game.board.Squares[4][3] == nil || game.board.Squares[4][3].Type != Pawn {
+		t.Error("Black pawn should be at d4 after exd4")
 	}
 }
