@@ -1,0 +1,18 @@
+{
+  "jsonrpc": "2.0",
+  "method": "tasks/send",
+  "params": {
+    "message": {
+      "kind": "message",
+      "role": "user",
+      "messageId": "task_1",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "{\"board_state\":\"  a b c d e f g h\n8 ♜ ♞ ♝ ♛ ♚ ♝ ♞ ♜ 8\n7 ♟ ♟ ♟ ♟ ♟ ♟ ♟ ♟ 7\n6 . . . . . . . . 6\n5 . . . . . . . . 5\n4 . . . . . . . . 4\n3 . . . . . . . . 3\n2 ♙ ♙ ♙ ♙ ♙ ♙ ♙ ♙ 2\n1 ♖ ♘ ♗ ♕ ♔ ♗ ♘ ♖ 1\n  a b c d e f g h\",\"player_color\":\"white\",\"game_history\":[\"e2e4\"]}"
+        }
+      ]
+    }
+  },
+  "id": 2
+}
