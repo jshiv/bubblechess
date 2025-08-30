@@ -1,0 +1,11 @@
+{
+  "ollama_url": "http://localhost:11434",
+  "model": "gemma3n:latest",
+  "timeout_seconds": 30,
+  "temperature": 0.1,
+  "top_p": 0.9,
+  "max_retries": 3,
+  "retry_delay_seconds": 2,
+  "move_history_length": 5,
+  "custom_prompts": {}
+}
