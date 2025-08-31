@@ -1,4 +1,4 @@
-package main
+package chess
 
 import (
 	"fmt"
@@ -879,10 +879,19 @@ func max(a, b int) int {
 	return b
 }
 
-func main() {
+// func StartGame() error {
+// 	p := tea.NewProgram(NewChessGame())
+// 	if _, err := p.Run(); err != nil {
+// 		fmt.Printf("Error running program: %v\n", err)
+// 		os.Exit(1)
+// 	}
+// }
+
+// StartGame starts the chess game
+func StartGame() error {
 	p := tea.NewProgram(NewChessGame())
 	if _, err := p.Run(); err != nil {
-		fmt.Printf("Error running program: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error running chess game: %w", err)
 	}
+	return nil
 }

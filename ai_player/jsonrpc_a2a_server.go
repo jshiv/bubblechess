@@ -30,7 +30,7 @@ type JSONRPCA2AServer struct {
 }
 
 // NewJSONRPCA2AServer creates a new A2A server using the generated JSON-RPC spec
-func NewJSONRPCA2AServer(ollamaURL, model string, logger *log.Logger) (*JSONRPCA2AServer, error) {
+func NewJSONRPCA2AServer(ollamaURL, model string, port int, logger *log.Logger) (*JSONRPCA2AServer, error) {
 	// Create AI player
 	aiPlayer := NewAIPlayer(ollamaURL, model, "black")
 
@@ -48,7 +48,7 @@ func NewJSONRPCA2AServer(ollamaURL, model string, logger *log.Logger) (*JSONRPCA
 	mux.HandleFunc("/a2a", handleJSONRPCEndpoint(aiPlayer, logger))
 
 	httpServer := &http.Server{
-		Addr:    ":8080",
+		Addr:    fmt.Sprintf(":%d", port),
 		Handler: mux,
 	}
 
@@ -280,10 +280,10 @@ func processChessRequest(req ChessRequest, aiPlayer *AIPlayer, logger *log.Logge
 }
 
 // StartJSONRPCA2AServer starts the JSON-RPC A2A server
-func StartJSONRPCA2AServer(ollamaURL, model string) error {
+func StartJSONRPCA2AServer(ollamaURL, model string, port int) error {
 	logger := log.New(log.Writer(), "[JSONRPCA2A] ", log.LstdFlags)
 
-	server, err := NewJSONRPCA2AServer(ollamaURL, model, logger)
+	server, err := NewJSONRPCA2AServer(ollamaURL, model, port, logger)
 	if err != nil {
 		return fmt.Errorf("failed to create JSON-RPC A2A server: %w", err)
 	}
