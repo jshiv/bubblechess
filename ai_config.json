@@ -1,6 +1,6 @@
 {
   "ollama_url": "http://localhost:11434",
-  "model": "gemma3n:latest",
+  "model": "gpt-oss:20b",
   "timeout_seconds": 30,
   "temperature": 0.1,
   "top_p": 0.9,

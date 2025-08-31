@@ -5,8 +5,9 @@ import (
 	"os"
 
 	"chess-tui/ai_player"
-	"chess-tui/chess"
+	"chess-tui/game"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
 
@@ -61,9 +62,10 @@ func startTUIGame() error {
 	// Start the TUI chess game
 	fmt.Println("Starting TUI Chess Game...")
 
-	// Start the actual chess game using the chess package
-	if err := chess.StartGame(); err != nil {
-		return fmt.Errorf("error starting chess game: %w", err)
+	p := tea.NewProgram(game.NewMenu())
+	if _, err := p.Run(); err != nil {
+		fmt.Printf("Error running game: %v\n", err)
+		os.Exit(1)
 	}
 
 	return nil

@@ -11,6 +11,7 @@ A terminal-based chess game built with Go and Bubble Tea.
 - **Chess Notation Support**: Supports both long algebraic notation (e2e4) and short algebraic notation (Nc6, Kxe5)
 - **Castling**: Full castling support with proper move validation
 - **Move Validation**: Basic chess move validation for all piece types
+- **New Game Package**: Clean TUI implementation using the notnil/chess library for accurate chess logic
 
 ## Installation
 
@@ -99,6 +100,25 @@ export BUBBLECHESS_MODE=text
 # Or run directly
 BUBBLECHESS_MODE=text ./bubblechess
 ```
+
+### New Game Package
+
+The new `game` package provides a clean, modern TUI implementation that directly uses the `notnil/chess` library:
+
+```bash
+# Run the new game TUI
+go run cmd/game/main.go
+
+# Or run the example
+go run examples/game_example.go
+```
+
+The new game package features:
+- Beautiful Unicode chess piece rendering
+- Direct integration with the chess library for accurate rules
+- Clean separation of concerns (TUI vs chess logic)
+- Modern Bubble Tea TUI framework
+- Proper error handling and user feedback
 
 ### Sample Game Session (Text Mode)
 ```
