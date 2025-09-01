@@ -1,10 +1,13 @@
 package ai_player
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -73,7 +76,10 @@ func NewAIPlayer(ollamaURL, model, color string) *AIPlayer {
 
 // GetMove gets the next move from the AI player
 func (ai *AIPlayer) GetMove(boardState string, gameHistory []string) (*ChessMove, error) {
+	slog.Debug("🎯 AI GetMove called", "color", ai.Color, "board_state_length", len(boardState), "history_length", len(gameHistory))
+
 	prompt := ai.buildPrompt(boardState, gameHistory)
+	slog.Debug("📝 Generated prompt", "prompt_length", len(prompt))
 
 	request := OllamaRequest{
 		Model:  ai.Model,
@@ -85,16 +91,23 @@ func (ai *AIPlayer) GetMove(boardState string, gameHistory []string) (*ChessMove
 		},
 	}
 
+	slog.Debug("🚀 Calling Ollama API", "model", ai.Model)
+
 	response, err := ai.callOllama(request)
 	if err != nil {
+		slog.Error("❌ Ollama API call failed", "error", err)
 		return nil, fmt.Errorf("failed to call Ollama: %w", err)
 	}
 
+	slog.Debug("✅ Ollama API call successful", "response_length", len(response.Response))
+
 	move, err := ai.parseMove(response.Response)
 	if err != nil {
+		slog.Error("❌ Failed to parse AI response", "error", err, "raw_response", response.Response)
 		return nil, fmt.Errorf("failed to parse AI response: %w", err)
 	}
 
+	slog.Debug("🎉 Successfully parsed AI move", "move", move.Notation)
 	return move, nil
 }
 
@@ -122,31 +135,48 @@ func (ai *AIPlayer) buildPrompt(boardState string, gameHistory []string) string 
 		prompt.WriteString("\n")
 	}
 
-	prompt.WriteString("Instructions:\n")
-	prompt.WriteString("1. Analyze the position carefully\n")
-	prompt.WriteString("2. Consider tactics, strategy, and piece safety\n")
-	prompt.WriteString("3. Respond with ONLY the move in standard algebraic notation\n")
-	prompt.WriteString("4. Use long notation (e2e4) or short notation (Nc6, Kxe5)\n")
-	prompt.WriteString("5. For castling, use O-O or O-O-O\n")
-	prompt.WriteString("6. Do not include any explanations or additional text\n\n")
+	prompt.WriteString("CRITICAL INSTRUCTIONS:\n")
+	prompt.WriteString("1. Analyze the position carefully for tactics, strategy, and piece safety\n")
+	prompt.WriteString("2. You MUST respond with ONLY the move in LONG ALGEBRAIC NOTATION\n")
+	prompt.WriteString("3. Use LONG notation format: e2e4, e7e5, g1f3, d7d5, etc.\n")
+	prompt.WriteString("4. For castling, use e1g1 (white kingside) or e8c8 (black queenside)\n")
+	prompt.WriteString("5. DO NOT include any explanations, analysis, or additional text\n")
+	prompt.WriteString("6. DO NOT use short notation like e4, Nf3, O-O\n")
+	prompt.WriteString("7. Your response must be exactly one move in long algebraic notation\n\n")
 
-	prompt.WriteString("Your move: ")
+	prompt.WriteString("Your move (long algebraic notation only): ")
 
-	return prompt.String()
+	finalPrompt := prompt.String()
+	slog.Debug("📝 Prompt construction complete", "prompt_length", len(finalPrompt), "notation_requirement", "long_algebraic_only")
+
+	return finalPrompt
 }
 
-// callOllama makes an HTTP request to the Ollama API
+// callOllama makes an HTTP request to the Ollama API with streaming support
 func (ai *AIPlayer) callOllama(request OllamaRequest) (*OllamaResponse, error) {
+	// Enable streaming for better progress tracking
+	request.Stream = true
+
 	jsonData, err := json.Marshal(request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := ai.Client.Post(
-		ai.OllamaURL+"/api/generate",
-		"application/json",
-		bytes.NewBuffer(jsonData),
-	)
+	slog.Info("🚀 Starting Ollama API call", "model", request.Model, "prompt_length", len(request.Prompt))
+
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second) // Increased timeout to 60 seconds
+	defer cancel()
+
+	// Create request with context
+	req, err := http.NewRequestWithContext(ctx, "POST", ai.OllamaURL+"/api/generate", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Make the request
+	resp, err := ai.Client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
 	}
@@ -157,21 +187,77 @@ func (ai *AIPlayer) callOllama(request OllamaRequest) (*OllamaResponse, error) {
 		return nil, fmt.Errorf("Ollama API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var response OllamaResponse
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+	// Handle streaming response
+	var fullResponse strings.Builder
+	var lastResponseTime time.Time
+	startTime := time.Now()
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		// Parse streaming response
+		var streamResp struct {
+			Response string `json:"response"`
+			Done     bool   `json:"done"`
+		}
+
+		if err := json.Unmarshal([]byte(line), &streamResp); err != nil {
+			slog.Debug("Failed to parse streaming response line", "line", line, "error", err)
+			continue
+		}
+
+		// Add to full response
+		if streamResp.Response != "" {
+			fullResponse.WriteString(streamResp.Response)
+
+			// Log progress every 500ms
+			if time.Since(lastResponseTime) > 500*time.Millisecond {
+				elapsed := time.Since(startTime)
+				slog.Info("💭 Ollama thinking...",
+					"elapsed", elapsed.Round(100*time.Millisecond),
+					"response_length", fullResponse.Len(),
+					"current_response", streamResp.Response)
+				lastResponseTime = time.Now()
+			}
+		}
+
+		// Check if done
+		if streamResp.Done {
+			elapsed := time.Since(startTime)
+			slog.Info("✅ Ollama response completed",
+				"total_time", elapsed.Round(100*time.Millisecond),
+				"total_response_length", fullResponse.Len())
+			break
+		}
 	}
 
-	return &response, nil
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read streaming response: %w", err)
+	}
+
+	// Create final response
+	response := &OllamaResponse{
+		Response: fullResponse.String(),
+	}
+
+	return response, nil
 }
 
 // parseMove parses the AI's response and extracts the chess move
 func (ai *AIPlayer) parseMove(response string) (*ChessMove, error) {
+	slog.Debug("🔍 Parsing AI response", "raw_response", response, "response_length", len(response))
+
 	// Clean up the response
 	response = strings.TrimSpace(response)
 	response = strings.Split(response, "\n")[0] // Take only the first line
+	slog.Debug("🧹 Cleaned response", "cleaned_response", response)
 
 	// Remove common prefixes/suffixes that AI might add
+	originalResponse := response
 	response = strings.TrimPrefix(response, "Move: ")
 	response = strings.TrimPrefix(response, "The best move is ")
 	response = strings.TrimPrefix(response, "I suggest ")
@@ -179,10 +265,17 @@ func (ai *AIPlayer) parseMove(response string) (*ChessMove, error) {
 	response = strings.TrimSuffix(response, "!")
 	response = strings.TrimSuffix(response, "?")
 
+	if originalResponse != response {
+		slog.Debug("✂️ Removed prefixes/suffixes", "original", originalResponse, "cleaned", response)
+	}
+
 	// Validate that it looks like a chess move
 	if !ai.isValidMoveNotation(response) {
+		slog.Error("❌ Invalid move notation", "cleaned_response", response, "original_response", originalResponse)
 		return nil, fmt.Errorf("invalid move notation: %s", response)
 	}
+
+	slog.Debug("✅ Move notation validated", "final_move", response)
 
 	return &ChessMove{
 		Notation: response,

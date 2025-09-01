@@ -155,33 +155,36 @@ func handleJSONRPCEndpoint(aiPlayer *AIPlayer, logger *log.Logger) http.HandlerF
 	}
 }
 
-// handleJSONRPCMessageSend handles the A2A message/send method
-func handleJSONRPCMessageSend(w http.ResponseWriter, r *http.Request, rawRequest map[string]interface{}, aiPlayer *AIPlayer, logger *log.Logger) {
+// handleJSONRPCMessageSend handles the message/send method for JSON-RPC
+func handleJSONRPCMessageSend(w http.ResponseWriter, r *http.Request, request map[string]interface{}, aiPlayer *AIPlayer, logger *log.Logger) {
 	logger.Printf("Received A2A message/send request")
-	logger.Printf("Raw request: %+v", rawRequest)
+	logger.Printf("Raw request: %+v", request)
+
+	// Extract ID for error handling
+	requestID := request["id"]
 
 	// Parse the request using the generated spec
-	var request SendMessageRequest
-	requestBytes, _ := json.Marshal(rawRequest)
+	var requestSendMessage SendMessageRequest
+	requestBytes, _ := json.Marshal(request)
 	logger.Printf("Request bytes: %s", string(requestBytes))
-	if err := json.Unmarshal(requestBytes, &request); err != nil {
+	if err := json.Unmarshal(requestBytes, &requestSendMessage); err != nil {
 		logger.Printf("Failed to parse SendMessageRequest: %v", err)
-		sendJSONRPCError(w, -32602, "Invalid params", fmt.Sprintf("Failed to parse request: %v", err), rawRequest["id"])
+		sendJSONRPCError(w, -32602, "Invalid params", fmt.Sprintf("Failed to parse request: %v", err), requestID)
 		return
 	}
-	logger.Printf("Parsed request: %+v", request)
+	logger.Printf("Parsed request: %+v", requestSendMessage)
 
 	// Parse chess request from message
 	var chessReq ChessRequest
-	if err := parseChessRequestFromJSONRPCMessage(request.Params.Message, &chessReq); err != nil {
-		sendJSONRPCError(w, -32602, "Invalid params", fmt.Sprintf("Failed to parse chess request: %v", err), request.Id)
+	if err := parseChessRequestFromJSONRPCMessage(requestSendMessage.Params.Message, &chessReq); err != nil {
+		sendJSONRPCError(w, -32602, "Invalid params", fmt.Sprintf("Failed to parse chess request: %v", err), requestID)
 		return
 	}
 
 	// Process chess request
 	result, err := processChessRequest(chessReq, aiPlayer, logger)
 	if err != nil {
-		sendJSONRPCError(w, -32603, "Internal error", fmt.Sprintf("Chess processing failed: %v", err), request.Id)
+		sendJSONRPCError(w, -32603, "Internal error", fmt.Sprintf("Chess processing failed: %v", err), requestID)
 		return
 	}
 
@@ -201,7 +204,7 @@ func handleJSONRPCMessageSend(w http.ResponseWriter, r *http.Request, rawRequest
 	// Create A2A success response
 	response := SendMessageSuccessResponse{
 		Jsonrpc: "2.0",
-		Id:      request.Id,
+		Id:      requestID,
 		Result: SendMessageSuccessResponseResult{
 			Kind:      "message",
 			MessageId: responseMessage.MessageId,
@@ -262,20 +265,56 @@ func sendJSONRPCError(w http.ResponseWriter, code int, message, data string, id 
 
 // processChessRequest processes a chess request and returns a move
 func processChessRequest(req ChessRequest, aiPlayer *AIPlayer, logger *log.Logger) (*ChessResponse, error) {
-	logger.Printf("Processing chess request for %s player", req.PlayerColor)
-	logger.Printf("Board state: %s", req.BoardState)
-	logger.Printf("Game history: %v", req.GameHistory)
+	logger.Printf("🎮 [JSONRPCA2A] Processing chess request - Player: %s, Board state length: %d, History: %v",
+		req.PlayerColor, len(req.BoardState), req.GameHistory)
 
-	// Get move from AI player
-	move, err := aiPlayer.GetMove(req.BoardState, req.GameHistory)
-	if err != nil {
-		return &ChessResponse{
-			Move: "",
-		}, err
+	// Set AI player color based on request
+	aiPlayer.Color = req.PlayerColor
+	logger.Printf("🎨 [JSONRPCA2A] AI player color set to: %s", aiPlayer.Color)
+
+	// Log board state for debugging
+	logger.Printf("📊 [JSONRPCA2A] Board state: %s", req.BoardState)
+	if len(req.GameHistory) > 0 {
+		logger.Printf("📜 [JSONRPCA2A] Game history: %v", req.GameHistory)
 	}
 
+	// Get AI move
+	logger.Printf("🤖 [JSONRPCA2A] Requesting AI move...")
+	startTime := time.Now()
+
+	// Start a goroutine to log progress
+	progressCtx, cancelProgress := context.WithCancel(context.Background())
+	defer cancelProgress()
+
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-progressCtx.Done():
+				return
+			case <-ticker.C:
+				elapsed := time.Since(startTime)
+				logger.Printf("⏱️ [JSONRPCA2A] Still thinking... (elapsed: %v)", elapsed.Round(time.Second))
+			}
+		}
+	}()
+
+	aiMove, err := aiPlayer.GetMove(req.BoardState, req.GameHistory)
+	cancelProgress() // Stop progress logging
+
+	elapsed := time.Since(startTime)
+
+	if err != nil {
+		logger.Printf("❌ [JSONRPCA2A] AI move generation failed after %v: %v", elapsed, err)
+		return nil, fmt.Errorf("AI move generation failed: %w", err)
+	}
+
+	logger.Printf("✅ [JSONRPCA2A] AI move generated successfully in %v: %s", elapsed, aiMove.Notation)
+
 	return &ChessResponse{
-		Move: move.Notation,
+		Move: aiMove.Notation,
 	}, nil
 }
 

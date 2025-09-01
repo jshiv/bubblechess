@@ -51,12 +51,80 @@ func TestUpdateStatus(t *testing.T) {
 	}
 
 	// Test after a move
-	err := g.chessGame.MoveStr("e2e4")
+	err := g.chessGame.MoveStr("e4")
 	if err != nil {
 		t.Fatalf("Failed to make move: %v", err)
 	}
 	g.updateStatus()
 	if g.status != "Black's turn" {
 		t.Errorf("Expected status 'Black's turn', got '%s'", g.status)
+	}
+}
+
+func TestMoveNotationHandling(t *testing.T) {
+	g := NewGame()
+
+	// Test short algebraic notation (e4)
+	err := g.chessGame.MoveStr("e4")
+	if err != nil {
+		t.Errorf("Failed to make short algebraic move 'e4': %v", err)
+	}
+
+	// Test that short algebraic notation (e5) is accepted
+	// After e4, black can play e5 (which means e7e5)
+	err = g.chessGame.MoveStr("e5")
+	if err != nil {
+		t.Errorf("Failed to make short algebraic move 'e5': %v", err)
+	}
+
+	// Verify the position is correct after both moves
+	expectedFEN := "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2"
+	if g.chessGame.Position().String() != expectedFEN {
+		t.Errorf("Expected position %s, got %s", expectedFEN, g.chessGame.Position().String())
+	}
+}
+
+func TestShortAlgebraicNotation(t *testing.T) {
+	g := NewGame()
+
+	// Make some opening moves using short algebraic notation
+	// Each move must be valid for the current position
+	moves := []string{"e4", "e5", "Nf3", "Nc6", "Bb5"}
+
+	for i, move := range moves {
+		err := g.chessGame.MoveStr(move)
+		if err != nil {
+			t.Errorf("Failed to make move %d '%s': %v", i+1, move, err)
+			// Print current position for debugging
+			t.Logf("Current position after move %d: %s", i, g.chessGame.Position().String())
+		}
+	}
+
+	// Verify the game is still ongoing
+	if g.chessGame.Outcome() != chess.NoOutcome {
+		t.Errorf("Expected game to be ongoing, got outcome: %v", g.chessGame.Outcome())
+	}
+}
+
+// TestLongAlgebraicNotation removed - game now uses AlgebraicNotation
+
+func TestNotationRequirements(t *testing.T) {
+	g := NewGame()
+
+	// Test that the game now accepts short algebraic notation
+	// These short notation moves should all work
+	shortMoves := []string{"e4", "e5", "Nf3", "Nc6", "Bb5"}
+
+	for i, move := range shortMoves {
+		err := g.chessGame.MoveStr(move)
+		if err != nil {
+			t.Errorf("Failed to make short algebraic move %d '%s': %v", i+1, move, err)
+		}
+	}
+
+	// Verify the final position
+	expectedFEN := "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3"
+	if g.chessGame.Position().String() != expectedFEN {
+		t.Errorf("Expected position %s, got %s", expectedFEN, g.chessGame.Position().String())
 	}
 }

@@ -47,7 +47,7 @@ func main() {
 	fmt.Printf("   Game history: %v\n", gameHistory)
 	fmt.Println("   Requesting AI move...")
 
-	aiMove, err := aiClient.GetAIMove(boardState, gameHistory)
+	aiMove, err := aiClient.GetAIMove(boardState, gameHistory, "white")
 	if err != nil {
 		log.Fatalf("❌ AI move request failed: %v", err)
 	}
@@ -76,7 +76,7 @@ func main() {
 	fmt.Printf("   Game history: %v\n", gameHistory2)
 	fmt.Println("   Requesting AI move...")
 
-	aiMove2, err := aiClient.GetAIMove(boardState2, gameHistory2)
+	aiMove2, err := aiClient.GetAIMove(boardState2, gameHistory2, "black")
 	if err != nil {
 		log.Fatalf("❌ AI move request failed: %v", err)
 	}
