@@ -68,7 +68,7 @@ func NewAIPlayer(ollamaURL, model, color string) *AIPlayer {
 		OllamaURL: ollamaURL,
 		Model:     model,
 		Client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 300 * time.Second, // Increased timeout to 5 minutes for deep chess analysis
 		},
 		Color: color,
 	}
@@ -165,7 +165,7 @@ func (ai *AIPlayer) callOllama(request OllamaRequest) (*OllamaResponse, error) {
 	slog.Info("🚀 Starting Ollama API call", "model", request.Model, "prompt_length", len(request.Prompt))
 
 	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second) // Increased timeout to 60 seconds
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second) // Increased timeout to 5 minutes for deep chess analysis
 	defer cancel()
 
 	// Create request with context
@@ -189,19 +189,26 @@ func (ai *AIPlayer) callOllama(request OllamaRequest) (*OllamaResponse, error) {
 
 	// Handle streaming response
 	var fullResponse strings.Builder
-	var lastResponseTime time.Time
+	var thinkingBuffer strings.Builder
+	var lastProgressTime time.Time
 	startTime := time.Now()
+	lineCount := 0
+
+	slog.Info("📖 Starting to read streaming response")
 
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		line := scanner.Text()
+		lineCount++
+
 		if line == "" {
 			continue
 		}
 
-		// Parse streaming response
+		// Parse streaming response - handle both "thinking" and "response" fields
 		var streamResp struct {
 			Response string `json:"response"`
+			Thinking string `json:"thinking"`
 			Done     bool   `json:"done"`
 		}
 
@@ -210,19 +217,30 @@ func (ai *AIPlayer) callOllama(request OllamaRequest) (*OllamaResponse, error) {
 			continue
 		}
 
-		// Add to full response
+		// Capture thinking content (this is where Ollama shows its analysis)
+		if streamResp.Thinking != "" {
+			thinkingBuffer.WriteString(streamResp.Thinking)
+
+			// Log thinking progress every 15 seconds
+			if time.Since(lastProgressTime) > 15*time.Second {
+				elapsed := time.Since(startTime)
+				currentThinking := thinkingBuffer.String()
+				// Show last 100 characters of thinking to avoid log spam
+				if len(currentThinking) > 100 {
+					currentThinking = "..." + currentThinking[len(currentThinking)-100:]
+				}
+				slog.Info("🧠 Ollama thinking progress",
+					"elapsed", elapsed.Round(time.Second),
+					"thinking_length", thinkingBuffer.Len(),
+					"current_thinking", currentThinking)
+				lastProgressTime = time.Now()
+			}
+		}
+
+		// Add to full response (this is the actual move when done)
 		if streamResp.Response != "" {
 			fullResponse.WriteString(streamResp.Response)
-
-			// Log progress every 500ms
-			if time.Since(lastResponseTime) > 500*time.Millisecond {
-				elapsed := time.Since(startTime)
-				slog.Info("💭 Ollama thinking...",
-					"elapsed", elapsed.Round(100*time.Millisecond),
-					"response_length", fullResponse.Len(),
-					"current_response", streamResp.Response)
-				lastResponseTime = time.Now()
-			}
+			slog.Info("📝 Response content received", "response", streamResp.Response)
 		}
 
 		// Check if done
@@ -230,14 +248,24 @@ func (ai *AIPlayer) callOllama(request OllamaRequest) (*OllamaResponse, error) {
 			elapsed := time.Since(startTime)
 			slog.Info("✅ Ollama response completed",
 				"total_time", elapsed.Round(100*time.Millisecond),
-				"total_response_length", fullResponse.Len())
+				"total_response_length", fullResponse.Len(),
+				"total_thinking_length", thinkingBuffer.Len(),
+				"total_lines_processed", lineCount)
 			break
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
+		slog.Error("❌ Scanner error", "error", err, "lines_processed", lineCount)
 		return nil, fmt.Errorf("failed to read streaming response: %w", err)
 	}
+
+	// Log final response details
+	slog.Info("📊 Streaming response summary",
+		"total_lines", lineCount,
+		"final_response_length", fullResponse.Len(),
+		"final_thinking_length", thinkingBuffer.Len(),
+		"final_response", fullResponse.String())
 
 	// Create final response
 	response := &OllamaResponse{
@@ -323,12 +351,76 @@ func (ai *AIPlayer) isValidMoveNotation(move string) bool {
 
 // TestConnection tests the connection to Ollama
 func (ai *AIPlayer) TestConnection() error {
-	request := OllamaRequest{
-		Model:  ai.Model,
-		Prompt: "Hello",
-		Stream: false,
+	slog.Info("🔍 Testing Ollama connection", "url", ai.OllamaURL)
+
+	// Test basic connectivity
+	resp, err := ai.Client.Get(ai.OllamaURL + "/api/tags")
+	if err != nil {
+		return fmt.Errorf("failed to connect to Ollama: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Ollama returned status %d", resp.StatusCode)
 	}
 
-	_, err := ai.callOllama(request)
-	return err
+	slog.Info("✅ Ollama connection test successful")
+	return nil
+}
+
+// TestModelResponse tests if the specific model can respond
+func (ai *AIPlayer) TestModelResponse() error {
+	slog.Info("🧪 Testing model response", "model", ai.Model)
+
+	// Create a simple test request
+	testRequest := OllamaRequest{
+		Model:  ai.Model,
+		Prompt: "Say 'hello' in one word.",
+		Stream: false,
+		Options: map[string]interface{}{
+			"temperature": 0.1,
+			"top_p":       0.9,
+		},
+	}
+
+	jsonData, err := json.Marshal(testRequest)
+	if err != nil {
+		return fmt.Errorf("failed to marshal test request: %w", err)
+	}
+
+	// Create context with shorter timeout for test
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", ai.OllamaURL+"/api/generate", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create test request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	startTime := time.Now()
+	resp, err := ai.Client.Do(req)
+	if err != nil {
+		return fmt.Errorf("test request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	elapsed := time.Since(startTime)
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("test request returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var testResponse OllamaResponse
+	if err := json.NewDecoder(resp.Body).Decode(&testResponse); err != nil {
+		return fmt.Errorf("failed to decode test response: %w", err)
+	}
+
+	slog.Info("✅ Model test successful",
+		"model", ai.Model,
+		"response_time", elapsed.Round(100*time.Millisecond),
+		"response", testResponse.Response)
+
+	return nil
 }

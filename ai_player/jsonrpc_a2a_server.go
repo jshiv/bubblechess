@@ -35,8 +35,15 @@ func NewJSONRPCA2AServer(ollamaURL, model string, port int, logger *log.Logger) 
 	aiPlayer := NewAIPlayer(ollamaURL, model, "black")
 
 	// Test connection to Ollama
+	logger.Printf("🔍 Testing Ollama connection...")
 	if err := aiPlayer.TestConnection(); err != nil {
 		return nil, fmt.Errorf("failed to test Ollama connection: %w", err)
+	}
+
+	// Test model response
+	logger.Printf("🧪 Testing model response...")
+	if err := aiPlayer.TestModelResponse(); err != nil {
+		return nil, fmt.Errorf("failed to test model response: %w", err)
 	}
 
 	// Create HTTP server
