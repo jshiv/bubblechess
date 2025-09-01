@@ -12,17 +12,21 @@ import (
 
 // Game represents the chess game TUI
 type Game struct {
-	chessGame   *chess.Game
-	input       textinput.Model
-	status      string
-	err         string
-	selected    string
-	validMoves  []chess.Move
-	gameMode    GameMode
-	aiClient    *AIClient
-	gameHistory []string
-	isAITurn    bool
+	chessGame     *chess.Game
+	input         textinput.Model
+	status        string
+	err           string
+	selected      string
+	validMoves    []chess.Move
+	gameMode      GameMode
+	aiClient      *AIClient
+	gameHistory   []string
+	isAITurn      bool
+	aiMovePending bool
 }
+
+// aiMoveRequestedMsg is a message that signals the AI move should be requested
+type aiMoveRequestedMsg struct{}
 
 // NewGame creates a new chess game
 func NewGame() *Game {
@@ -38,13 +42,14 @@ func NewGameWithMode(mode GameMode) *Game {
 	input.Width = 20
 
 	game := &Game{
-		chessGame:   chess.NewGame(chess.UseNotation(chess.LongAlgebraicNotation{})),
-		input:       input,
-		status:      "White's turn",
-		validMoves:  []chess.Move{},
-		gameMode:    mode,
-		gameHistory: []string{},
-		isAITurn:    false,
+		chessGame:     chess.NewGame(chess.UseNotation(chess.LongAlgebraicNotation{})),
+		input:         input,
+		status:        "White's turn",
+		validMoves:    []chess.Move{},
+		gameMode:      mode,
+		gameHistory:   []string{},
+		isAITurn:      false,
+		aiMovePending: false,
 	}
 
 	// Initialize AI client if playing against AI
@@ -78,8 +83,20 @@ func (g *Game) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			// Only handle enter if we have input to process and it's not AI's turn
 			if g.input.Value() != "" && !g.isAITurn {
+				fmt.Printf("DEBUG: Enter pressed, input value: %s\n", g.input.Value())
 				return g, g.makeMove(g.input.Value())
 			}
+		}
+	case aiMoveRequestedMsg:
+		// AI move was requested, execute it
+		fmt.Printf("DEBUG: Received aiMoveRequestedMsg, executing getAIMove()\n")
+		return g, g.getAIMove()
+	default:
+		// Check if AI move is pending
+		if g.aiMovePending {
+			fmt.Printf("DEBUG: AI move pending, executing getAIMove()\n")
+			g.aiMovePending = false
+			return g, g.getAIMove()
 		}
 	}
 
@@ -116,6 +133,10 @@ func (g *Game) View() string {
 		modeText = "Human vs AI"
 	}
 	sb.WriteString(modeStyle.Render("Mode: "+modeText) + "\n")
+
+	// Debug info
+	sb.WriteString(fmt.Sprintf("DEBUG: gameMode=%d, isAITurn=%t, turn=%s\n",
+		g.gameMode, g.isAITurn, g.chessGame.Position().Turn()))
 
 	// Status
 	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00"))
@@ -239,31 +260,44 @@ func (g *Game) getPieceSymbol(piece chess.Piece) string {
 // makeMove attempts to make a move
 func (g *Game) makeMove(moveStr string) tea.Cmd {
 	return func() tea.Msg {
+		fmt.Printf("DEBUG: makeMove() function started with move: %s\n", moveStr)
+
 		// Clear previous error
 		g.err = ""
 
 		// Try to make the move
 		err := g.chessGame.MoveStr(moveStr)
 		if err != nil {
+			fmt.Printf("DEBUG: Move failed with error: %v\n", err)
 			g.err = err.Error()
 			return nil
 		}
+		fmt.Printf("DEBUG: Move successful, current turn: %s\n", g.chessGame.Position().Turn())
 
 		// Add move to history
 		g.gameHistory = append(g.gameHistory, moveStr)
+		fmt.Printf("DEBUG: Move added to history, history length: %d\n", len(g.gameHistory))
 
 		// Update status
 		g.updateStatus()
+		fmt.Printf("DEBUG: Status updated to: %s\n", g.status)
 
 		// Clear input
 		g.input.SetValue("")
 
 		// If playing against AI and it's now AI's turn, get AI move
+		fmt.Printf("DEBUG: Checking AI turn - gameMode=%d, turn=%s\n", g.gameMode, g.chessGame.Position().Turn())
 		if g.gameMode == ModeHumanVsAI && g.chessGame.Position().Turn() == chess.Black {
+			fmt.Printf("DEBUG: AI turn detected, setting aiMovePending flag\n")
 			g.isAITurn = true
-			return g.getAIMove()
+			g.aiMovePending = true
+			g.status = "🤖 AI is thinking..."
+			fmt.Printf("DEBUG: aiMovePending set to true\n")
+		} else {
+			fmt.Printf("DEBUG: Not AI turn - gameMode=%d, turn=%s\n", g.gameMode, g.chessGame.Position().Turn())
 		}
 
+		fmt.Printf("DEBUG: makeMove() returning nil\n")
 		return nil
 	}
 }
@@ -277,6 +311,7 @@ func (g *Game) resetGame() tea.Cmd {
 		g.input.SetValue("")
 		g.gameHistory = []string{}
 		g.isAITurn = false
+		g.aiMovePending = false
 		return nil
 	}
 }
@@ -312,24 +347,36 @@ func (g *Game) updateStatus() {
 // getAIMove gets a move from the AI
 func (g *Game) getAIMove() tea.Cmd {
 	return func() tea.Msg {
+		fmt.Printf("DEBUG: getAIMove() function called\n")
+
 		if g.aiClient == nil {
+			fmt.Printf("DEBUG: AI client is nil\n")
 			g.err = "AI client not initialized"
 			return nil
 		}
 
+		fmt.Printf("DEBUG: AI client found, getting board state\n")
 		// Get current board state
 		boardState := g.getBoardState()
 
-		// Get AI move
+		fmt.Printf("DEBUG: Board state: %s\n", boardState)
+		fmt.Printf("DEBUG: Game history: %v\n", g.gameHistory)
+		fmt.Printf("DEBUG: Calling AI client GetAIMove()\n")
+
+		// Get AI move (this will block, but it's the only way to make it work)
 		aiMove, err := g.aiClient.GetAIMove(boardState, g.gameHistory)
 		if err != nil {
+			fmt.Printf("DEBUG: AI error: %v\n", err)
 			g.err = "AI error: " + err.Error()
 			return nil
 		}
 
+		fmt.Printf("DEBUG: AI move received: %s\n", aiMove)
+
 		// Apply AI move
 		err = g.chessGame.MoveStr(aiMove)
 		if err != nil {
+			fmt.Printf("DEBUG: Invalid AI move error: %v\n", err)
 			g.err = "Invalid AI move: " + err.Error()
 			return nil
 		}
@@ -341,6 +388,7 @@ func (g *Game) getAIMove() tea.Cmd {
 		g.updateStatus()
 		g.isAITurn = false
 
+		fmt.Printf("DEBUG: AI move completed successfully\n")
 		return nil
 	}
 }

@@ -106,11 +106,14 @@ func (ac *AIClient) GetAIMove(boardState string, gameHistory []string) (string, 
 		return "", fmt.Errorf("failed to marshal JSON-RPC request: %w", err)
 	}
 
-	// Debug output removed for production
+	// Debug output
+	fmt.Printf("DEBUG: Making request to %s/a2a\n", ac.serverURL)
+	fmt.Printf("DEBUG: Request data: %s\n", string(jsonData))
 
 	// Make request to the a2a endpoint
 	resp, err := ac.client.Post(ac.serverURL+"/a2a", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
+		fmt.Printf("DEBUG: Request failed: %v\n", err)
 		return "", fmt.Errorf("failed to make request to a2a server: %w", err)
 	}
 	defer resp.Body.Close()
@@ -125,7 +128,9 @@ func (ac *AIClient) GetAIMove(boardState string, gameHistory []string) (string, 
 		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// Debug output removed for production
+	// Debug output
+	fmt.Printf("DEBUG: Response status: %d\n", resp.StatusCode)
+	fmt.Printf("DEBUG: Response body: %s\n", string(bodyBytes))
 
 	// Parse the JSON-RPC response
 	var jsonrpcResponse JSONRPCResponse
