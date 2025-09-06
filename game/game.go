@@ -270,24 +270,9 @@ func (g *Game) getPieceSymbol(piece chess.Piece) string {
 	return "?"
 }
 
-// convertLongToShortNotation converts long algebraic notation to short algebraic notation
+// convertLongToShortNotation is no longer needed - we use long notation directly
 func (g *Game) convertLongToShortNotation(moveStr string) string {
-	// If it's already short notation (less than 4 characters), return as is
-	if len(moveStr) < 4 {
-		return moveStr
-	}
-
-	// For pawn moves like "e2e4" -> "e4"
-	if len(moveStr) == 4 && moveStr[0] >= 'a' && moveStr[0] <= 'h' &&
-		moveStr[2] >= 'a' && moveStr[2] <= 'h' &&
-		moveStr[1] >= '2' && moveStr[1] <= '7' &&
-		moveStr[3] >= '2' && moveStr[3] <= '8' {
-		return string(moveStr[2:4]) // Return destination square
-	}
-
-	// For other moves, return as is for now
-	// TODO: Add more conversion logic for pieces, captures, etc.
-	return moveStr
+	return moveStr // No conversion needed - we use long notation directly
 }
 
 // makeMove attempts to make a move
@@ -478,4 +463,49 @@ func (g *Game) retryAIMoveWithError(boardState string, gameHistory []string, err
 
 	// Use the AI client to make the retry request
 	return g.aiClient.GetAIMoveWithError(boardState, gameHistory, errorMsg, playerColor)
+}
+
+// Public methods for external access
+
+// AIClient returns the AI client instance
+func (g *Game) AIClient() *AIClient {
+	return g.aiClient
+}
+
+// GetBoardState returns the current board state as a string (public version)
+func (g *Game) GetBoardState() string {
+	return g.getBoardState()
+}
+
+// GetGameHistory returns the current game history
+func (g *Game) GetGameHistory() []string {
+	return g.gameHistory
+}
+
+// GetCurrentTurn returns the current turn as a string
+func (g *Game) GetCurrentTurn() string {
+	if g.chessGame.Position().Turn() == chess.White {
+		return "White"
+	}
+	return "Black"
+}
+
+// MakeMove makes a move and returns an error if it fails
+func (g *Game) MakeMove(moveStr string) error {
+	// Convert long notation to short if needed
+	convertedMove := g.convertLongToShortNotation(moveStr)
+
+	// Try to make the move
+	err := g.chessGame.MoveStr(convertedMove)
+	if err != nil {
+		return fmt.Errorf("invalid move: %w", err)
+	}
+
+	// Add to game history
+	g.gameHistory = append(g.gameHistory, moveStr)
+
+	// Update status
+	g.updateStatus()
+
+	return nil
 }

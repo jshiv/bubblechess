@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -53,61 +52,69 @@ type AIPlayer struct {
 	Model     string
 	Client    *http.Client
 	Color     string // "white" or "black"
+	Logger    *ColoredLogger
 }
 
 // NewAIPlayer creates a new AI player
-func NewAIPlayer(ollamaURL, model, color string) *AIPlayer {
+func NewAIPlayer(ollamaURL, model, color string, logger *ColoredLogger) *AIPlayer {
 	if ollamaURL == "" {
 		ollamaURL = "http://localhost:11434"
 	}
 	if model == "" {
 		model = "gemma3n:latest" // Default model, adjust as needed
 	}
+	if logger == nil {
+		logger = NewAIPlayerLogger()
+	}
 
 	return &AIPlayer{
 		OllamaURL: ollamaURL,
 		Model:     model,
 		Client: &http.Client{
-			Timeout: 300 * time.Second, // Increased timeout to 5 minutes for deep chess analysis
+			Timeout: 60 * time.Second, // Reduced timeout to 1 minute for faster responses
 		},
-		Color: color,
+		Color:  color,
+		Logger: logger,
 	}
 }
 
 // GetMove gets the next move from the AI player
 func (ai *AIPlayer) GetMove(boardState string, gameHistory []string) (*ChessMove, error) {
-	slog.Debug("🎯 AI GetMove called", "color", ai.Color, "board_state_length", len(boardState), "history_length", len(gameHistory))
+	ai.Logger.Debug("🎯 %sAI GetMove called - Color: %s, Board: %d chars, History: %d moves%s",
+		ColorBlue, ai.Color, len(boardState), len(gameHistory), ColorReset)
 
 	prompt := ai.buildPrompt(boardState, gameHistory)
-	slog.Debug("📝 Generated prompt", "prompt_length", len(prompt))
+	ai.Logger.Debug("📝 %sGenerated prompt: %d chars%s", ColorCyan, len(prompt), ColorReset)
 
 	request := OllamaRequest{
 		Model:  ai.Model,
 		Prompt: prompt,
 		Stream: false,
 		Options: map[string]interface{}{
-			"temperature": 0.1, // Low temperature for more consistent moves
-			"top_p":       0.9,
+			"temperature":    0.3, // Slightly higher for faster decisions
+			"top_p":          0.8, // Lower for more focused responses
+			"top_k":          20,  // Limit vocabulary for faster generation
+			"repeat_penalty": 1.1, // Prevent repetitive thinking
 		},
 	}
 
-	slog.Debug("🚀 Calling Ollama API", "model", ai.Model)
+	ai.Logger.Debug("🚀 %sCalling Ollama API - Model: %s%s", ColorGreen, ai.Model, ColorReset)
 
 	response, err := ai.callOllama(request)
 	if err != nil {
-		slog.Error("❌ Ollama API call failed", "error", err)
+		ai.Logger.Error("❌ %sOllama API call failed: %v%s", ColorRed, err, ColorReset)
 		return nil, fmt.Errorf("failed to call Ollama: %w", err)
 	}
 
-	slog.Debug("✅ Ollama API call successful", "response_length", len(response.Response))
+	ai.Logger.Debug("✅ %sOllama API call successful - Response: %d chars%s", ColorGreen, len(response.Response), ColorReset)
 
 	move, err := ai.parseMove(response.Response)
 	if err != nil {
-		slog.Error("❌ Failed to parse AI response", "error", err, "raw_response", response.Response)
+		ai.Logger.Error("❌ %sFailed to parse AI response: %v - Raw: %s%s", ColorRed, err, response.Response, ColorReset)
 		return nil, fmt.Errorf("failed to parse AI response: %w", err)
 	}
 
-	slog.Debug("🎉 Successfully parsed AI move", "move", move.Notation)
+	ai.Logger.Debug("🎉 %sSuccessfully parsed AI move: %s%s", ColorGreen, move.Notation, ColorReset)
 	return move, nil
 }
 
@@ -117,15 +124,15 @@ func (ai *AIPlayer) buildPrompt(boardState string, gameHistory []string) string 
 
 	prompt.WriteString("You are a chess AI playing as ")
 	prompt.WriteString(ai.Color)
-	prompt.WriteString(". Analyze the current board position and suggest the best move.\n\n")
+	prompt.WriteString(". Make a quick, solid move.\n\n")
 
 	prompt.WriteString("Current board position:\n")
 	prompt.WriteString(boardState)
 	prompt.WriteString("\n\n")
 
 	if len(gameHistory) > 0 {
-		prompt.WriteString("Game history (last 5 moves):\n")
-		start := len(gameHistory) - 5
+		prompt.WriteString("Game history (last 3 moves):\n")
+		start := len(gameHistory) - 3
 		if start < 0 {
 			start = 0
 		}
@@ -135,19 +142,27 @@ func (ai *AIPlayer) buildPrompt(boardState string, gameHistory []string) string 
 		prompt.WriteString("\n")
 	}
 
-	prompt.WriteString("CRITICAL INSTRUCTIONS:\n")
-	prompt.WriteString("1. Analyze the position carefully for tactics, strategy, and piece safety\n")
-	prompt.WriteString("2. You MUST respond with ONLY the move in LONG ALGEBRAIC NOTATION\n")
-	prompt.WriteString("3. Use LONG notation format: e2e4, e7e5, g1f3, d7d5, etc.\n")
-	prompt.WriteString("4. For castling, use e1g1 (white kingside) or e8c8 (black queenside)\n")
-	prompt.WriteString("5. DO NOT include any explanations, analysis, or additional text\n")
-	prompt.WriteString("6. DO NOT use short notation like e4, Nf3, O-O\n")
-	prompt.WriteString("7. Your response must be exactly one move in long algebraic notation\n\n")
+	prompt.WriteString("SPEED INSTRUCTIONS:\n")
+	prompt.WriteString("1. Think FAST - spend no more than 10-15 seconds analyzing\n")
+	prompt.WriteString("2. Look for obvious tactics (checks, captures, threats) first\n")
+	prompt.WriteString("3. If no tactics, make a developing move (develop pieces, control center)\n")
+	prompt.WriteString("4. Avoid overthinking - pick a reasonable move quickly\n")
+	prompt.WriteString("5. DO NOT spend time on deep positional analysis\n\n")
 
-	prompt.WriteString("Your move (long algebraic notation only): ")
+	prompt.WriteString("CRITICAL FORMAT:\n")
+	prompt.WriteString("1. You MUST respond with ONLY the move in SHORT ALGEBRAIC NOTATION\n")
+	prompt.WriteString("2. Use SHORT notation format: e4, e5, Nf3, Nc6, Bb5, etc.\n")
+	prompt.WriteString("3. For castling, use O-O (kingside) or O-O-O (queenside)\n")
+	prompt.WriteString("4. For captures, use exd5 (pawn captures) or Nxe5 (piece captures)\n")
+	prompt.WriteString("5. DO NOT include any explanations, analysis, or additional text\n")
+	prompt.WriteString("6. DO NOT use long notation like e2e4, g1f3\n")
+	prompt.WriteString("7. Your response must be exactly one move in short algebraic notation\n\n")
+
+	prompt.WriteString("Your move (short algebraic notation only): ")
 
 	finalPrompt := prompt.String()
-	slog.Debug("📝 Prompt construction complete", "prompt_length", len(finalPrompt), "notation_requirement", "long_algebraic_only")
+	ai.Logger.Debug("📝 %sPrompt construction complete - Length: %d chars, Speed: fast_thinking%s",
+		ColorCyan, len(finalPrompt), ColorReset)
 
 	return finalPrompt
 }
@@ -162,10 +177,11 @@ func (ai *AIPlayer) callOllama(request OllamaRequest) (*OllamaResponse, error) {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	slog.Info("🚀 Starting Ollama API call", "model", request.Model, "prompt_length", len(request.Prompt))
+	ai.Logger.Info("🚀 %sStarting Ollama API call - Model: %s, Prompt: %d chars%s",
+		ColorGreen, request.Model, len(request.Prompt), ColorReset)
 
 	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second) // Increased timeout to 5 minutes for deep chess analysis
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second) // Reduced timeout to 1 minute for faster responses
 	defer cancel()
 
 	// Create request with context
@@ -194,7 +210,7 @@ func (ai *AIPlayer) callOllama(request OllamaRequest) (*OllamaResponse, error) {
 	startTime := time.Now()
 	lineCount := 0
 
-	slog.Info("📖 Starting to read streaming response")
+	ai.Logger.Info("📖 %sStarting to read streaming response%s", ColorBlue, ColorReset)
 
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
@@ -213,7 +229,8 @@ func (ai *AIPlayer) callOllama(request OllamaRequest) (*OllamaResponse, error) {
 		}
 
 		if err := json.Unmarshal([]byte(line), &streamResp); err != nil {
-			slog.Debug("Failed to parse streaming response line", "line", line, "error", err)
+			ai.Logger.Debug("⚠️ %sFailed to parse streaming response line: %s - Error: %v%s",
+				ColorYellow, line, err, ColorReset)
 			continue
 		}
 
@@ -229,10 +246,8 @@ func (ai *AIPlayer) callOllama(request OllamaRequest) (*OllamaResponse, error) {
 				if len(currentThinking) > 100 {
 					currentThinking = "..." + currentThinking[len(currentThinking)-100:]
 				}
-				slog.Info("🧠 Ollama thinking progress",
-					"elapsed", elapsed.Round(time.Second),
-					"thinking_length", thinkingBuffer.Len(),
-					"current_thinking", currentThinking)
+				ai.Logger.Info("🧠 %sOllama thinking progress - Elapsed: %v, Length: %d chars, Current: %s%s",
+					ColorPurple, elapsed.Round(time.Second), thinkingBuffer.Len(), currentThinking, ColorReset)
 				lastProgressTime = time.Now()
 			}
 		}
@@ -240,32 +255,26 @@ func (ai *AIPlayer) callOllama(request OllamaRequest) (*OllamaResponse, error) {
 		// Add to full response (this is the actual move when done)
 		if streamResp.Response != "" {
 			fullResponse.WriteString(streamResp.Response)
-			slog.Info("📝 Response content received", "response", streamResp.Response)
+			ai.Logger.Info("📝 %sResponse content received: %s%s", ColorCyan, streamResp.Response, ColorReset)
 		}
 
 		// Check if done
 		if streamResp.Done {
 			elapsed := time.Since(startTime)
-			slog.Info("✅ Ollama response completed",
-				"total_time", elapsed.Round(100*time.Millisecond),
-				"total_response_length", fullResponse.Len(),
-				"total_thinking_length", thinkingBuffer.Len(),
-				"total_lines_processed", lineCount)
+			ai.Logger.Info("✅ %sOllama response completed - Time: %v, Response: %d chars, Thinking: %d chars, Lines: %d%s",
+				ColorGreen, elapsed.Round(100*time.Millisecond), fullResponse.Len(), thinkingBuffer.Len(), lineCount, ColorReset)
 			break
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		slog.Error("❌ Scanner error", "error", err, "lines_processed", lineCount)
+		ai.Logger.Error("❌ %sScanner error: %v - Lines processed: %d%s", ColorRed, err, lineCount, ColorReset)
 		return nil, fmt.Errorf("failed to read streaming response: %w", err)
 	}
 
 	// Log final response details
-	slog.Info("📊 Streaming response summary",
-		"total_lines", lineCount,
-		"final_response_length", fullResponse.Len(),
-		"final_thinking_length", thinkingBuffer.Len(),
-		"final_response", fullResponse.String())
+	ai.Logger.Info("📊 %sStreaming response summary - Lines: %d, Response: %d chars, Thinking: %d chars, Final: %s%s",
+		ColorBlue, lineCount, fullResponse.Len(), thinkingBuffer.Len(), fullResponse.String(), ColorReset)
 
 	// Create final response
 	response := &OllamaResponse{
@@ -277,12 +286,13 @@ func (ai *AIPlayer) callOllama(request OllamaRequest) (*OllamaResponse, error) {
 
 // parseMove parses the AI's response and extracts the chess move
 func (ai *AIPlayer) parseMove(response string) (*ChessMove, error) {
-	slog.Debug("🔍 Parsing AI response", "raw_response", response, "response_length", len(response))
+	ai.Logger.Debug("🔍 %sParsing AI response - Raw: %s, Length: %d chars%s",
+		ColorBlue, response, len(response), ColorReset)
 
 	// Clean up the response
 	response = strings.TrimSpace(response)
 	response = strings.Split(response, "\n")[0] // Take only the first line
-	slog.Debug("🧹 Cleaned response", "cleaned_response", response)
+	ai.Logger.Debug("🧹 %sCleaned response: %s%s", ColorCyan, response, ColorReset)
 
 	// Remove common prefixes/suffixes that AI might add
 	originalResponse := response
@@ -294,16 +304,18 @@ func (ai *AIPlayer) parseMove(response string) (*ChessMove, error) {
 	response = strings.TrimSuffix(response, "?")
 
 	if originalResponse != response {
-		slog.Debug("✂️ Removed prefixes/suffixes", "original", originalResponse, "cleaned", response)
+		ai.Logger.Debug("✂️ %sRemoved prefixes/suffixes - Original: %s, Cleaned: %s%s",
+			ColorYellow, originalResponse, response, ColorReset)
 	}
 
 	// Validate that it looks like a chess move
 	if !ai.isValidMoveNotation(response) {
-		slog.Error("❌ Invalid move notation", "cleaned_response", response, "original_response", originalResponse)
+		ai.Logger.Error("❌ %sInvalid move notation - Cleaned: %s, Original: %s%s",
+			ColorRed, response, originalResponse, ColorReset)
 		return nil, fmt.Errorf("invalid move notation: %s", response)
 	}
 
-	slog.Debug("✅ Move notation validated", "final_move", response)
+	ai.Logger.Debug("✅ %sMove notation validated: %s%s", ColorGreen, response, ColorReset)
 
 	return &ChessMove{
 		Notation: response,
@@ -351,7 +363,7 @@ func (ai *AIPlayer) isValidMoveNotation(move string) bool {
 
 // TestConnection tests the connection to Ollama
 func (ai *AIPlayer) TestConnection() error {
-	slog.Info("🔍 Testing Ollama connection", "url", ai.OllamaURL)
+	ai.Logger.Info("🔍 %sTesting Ollama connection - URL: %s%s", ColorBlue, ai.OllamaURL, ColorReset)
 
 	// Test basic connectivity
 	resp, err := ai.Client.Get(ai.OllamaURL + "/api/tags")
@@ -364,13 +376,13 @@ func (ai *AIPlayer) TestConnection() error {
 		return fmt.Errorf("Ollama returned status %d", resp.StatusCode)
 	}
 
-	slog.Info("✅ Ollama connection test successful")
+	ai.Logger.Info("✅ %sOllama connection test successful%s", ColorGreen, ColorReset)
 	return nil
 }
 
 // TestModelResponse tests if the specific model can respond
 func (ai *AIPlayer) TestModelResponse() error {
-	slog.Info("🧪 Testing model response", "model", ai.Model)
+	ai.Logger.Info("🧪 %sTesting model response - Model: %s%s", ColorPurple, ai.Model, ColorReset)
 
 	// Create a simple test request
 	testRequest := OllamaRequest{
@@ -417,10 +429,8 @@ func (ai *AIPlayer) TestModelResponse() error {
 		return fmt.Errorf("failed to decode test response: %w", err)
 	}
 
-	slog.Info("✅ Model test successful",
-		"model", ai.Model,
-		"response_time", elapsed.Round(100*time.Millisecond),
-		"response", testResponse.Response)
+	ai.Logger.Info("✅ %sModel test successful - Model: %s, Time: %v, Response: %s%s",
+		ColorGreen, ai.Model, elapsed.Round(100*time.Millisecond), testResponse.Response, ColorReset)
 
 	return nil
 }

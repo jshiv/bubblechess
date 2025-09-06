@@ -37,12 +37,13 @@ func NewAIGame(mode GameMode, config *Config) *AIGame {
 	}
 
 	// Initialize AI players based on game mode
+	logger := NewAIPlayerLogger()
 	switch mode {
 	case ModeHumanVsAI:
-		game.AIBlack = NewAIPlayer(config.OllamaURL, config.Model, "black")
+		game.AIBlack = NewAIPlayer(config.OllamaURL, config.Model, "black", logger)
 	case ModeAIvsAI:
-		game.AIWhite = NewAIPlayer(config.OllamaURL, config.Model, "white")
-		game.AIBlack = NewAIPlayer(config.OllamaURL, config.Model, "black")
+		game.AIWhite = NewAIPlayer(config.OllamaURL, config.Model, "white", logger)
+		game.AIBlack = NewAIPlayer(config.OllamaURL, config.Model, "black", logger)
 	case ModeHumanVsHuman:
 		// No AI players needed
 	}

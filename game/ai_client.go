@@ -26,7 +26,7 @@ func NewAIClient(serverURL string) *AIClient {
 	return &AIClient{
 		serverURL: serverURL,
 		client: &http.Client{
-			Timeout: 300 * time.Second, // Increased timeout to 5 minutes to match AI server
+			Timeout: 600 * time.Second, // Increased timeout to 10 minutes for longer AI thinking
 		},
 	}
 }

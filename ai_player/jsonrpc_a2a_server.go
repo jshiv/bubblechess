@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -26,22 +25,22 @@ type ChessResponse struct {
 type JSONRPCA2AServer struct {
 	aiPlayer *AIPlayer
 	server   *http.Server
-	logger   *log.Logger
+	logger   *ColoredLogger
 }
 
 // NewJSONRPCA2AServer creates a new A2A server using the generated JSON-RPC spec
-func NewJSONRPCA2AServer(ollamaURL, model string, port int, logger *log.Logger) (*JSONRPCA2AServer, error) {
+func NewJSONRPCA2AServer(ollamaURL, model string, port int, logger *ColoredLogger) (*JSONRPCA2AServer, error) {
 	// Create AI player
-	aiPlayer := NewAIPlayer(ollamaURL, model, "black")
+	aiPlayer := NewAIPlayer(ollamaURL, model, "black", logger)
 
 	// Test connection to Ollama
-	logger.Printf("🔍 Testing Ollama connection...")
+	logger.Info("🔍 %sTesting Ollama connection...%s", ColorBlue, ColorReset)
 	if err := aiPlayer.TestConnection(); err != nil {
 		return nil, fmt.Errorf("failed to test Ollama connection: %w", err)
 	}
 
 	// Test model response
-	logger.Printf("🧪 Testing model response...")
+	logger.Info("🧪 %sTesting model response...%s", ColorPurple, ColorReset)
 	if err := aiPlayer.TestModelResponse(); err != nil {
 		return nil, fmt.Errorf("failed to test model response: %w", err)
 	}
@@ -68,9 +67,9 @@ func NewJSONRPCA2AServer(ollamaURL, model string, port int, logger *log.Logger) 
 
 // Start starts the JSON-RPC A2A server
 func (s *JSONRPCA2AServer) Start() error {
-	s.logger.Printf("Starting JSON-RPC A2A Chess Server on :8080")
-	s.logger.Printf("AI Model: %s", s.aiPlayer.Model)
-	s.logger.Printf("Ollama URL: %s", s.aiPlayer.OllamaURL)
+	s.logger.Info("🚀 %sStarting JSON-RPC A2A Chess Server on :8080%s", ColorGreen, ColorReset)
+	s.logger.Info("🤖 %sAI Model: %s%s", ColorCyan, s.aiPlayer.Model, ColorReset)
+	s.logger.Info("🔗 %sOllama URL: %s%s", ColorBlue, s.aiPlayer.OllamaURL, ColorReset)
 
 	return s.server.ListenAndServe()
 }
@@ -132,7 +131,7 @@ func handleJSONRPCAgentCard(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleJSONRPCEndpoint handles A2A JSON-RPC protocol requests
-func handleJSONRPCEndpoint(aiPlayer *AIPlayer, logger *log.Logger) http.HandlerFunc {
+func handleJSONRPCEndpoint(aiPlayer *AIPlayer, logger *ColoredLogger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			sendJSONRPCError(w, -32600, "Method Not Allowed", "Only POST method is supported", nil)
@@ -163,9 +162,9 @@ func handleJSONRPCEndpoint(aiPlayer *AIPlayer, logger *log.Logger) http.HandlerF
 }
 
 // handleJSONRPCMessageSend handles the message/send method for JSON-RPC
-func handleJSONRPCMessageSend(w http.ResponseWriter, r *http.Request, request map[string]interface{}, aiPlayer *AIPlayer, logger *log.Logger) {
-	logger.Printf("Received A2A message/send request")
-	logger.Printf("Raw request: %+v", request)
+func handleJSONRPCMessageSend(w http.ResponseWriter, r *http.Request, request map[string]interface{}, aiPlayer *AIPlayer, logger *ColoredLogger) {
+	logger.Info("📨 %sReceived A2A message/send request%s", ColorBlue, ColorReset)
+	logger.Debug("📋 %sRaw request: %+v%s", ColorGray, request, ColorReset)
 
 	// Extract ID for error handling
 	requestID := request["id"]
@@ -173,13 +172,13 @@ func handleJSONRPCMessageSend(w http.ResponseWriter, r *http.Request, request ma
 	// Parse the request using the generated spec
 	var requestSendMessage SendMessageRequest
 	requestBytes, _ := json.Marshal(request)
-	logger.Printf("Request bytes: %s", string(requestBytes))
+	logger.Debug("📄 %sRequest bytes: %s%s", ColorGray, string(requestBytes), ColorReset)
 	if err := json.Unmarshal(requestBytes, &requestSendMessage); err != nil {
-		logger.Printf("Failed to parse SendMessageRequest: %v", err)
+		logger.Error("❌ %sFailed to parse SendMessageRequest: %v%s", ColorRed, err, ColorReset)
 		sendJSONRPCError(w, -32602, "Invalid params", fmt.Sprintf("Failed to parse request: %v", err), requestID)
 		return
 	}
-	logger.Printf("Parsed request: %+v", requestSendMessage)
+	logger.Debug("✅ %sParsed request: %+v%s", ColorGreen, requestSendMessage, ColorReset)
 
 	// Parse chess request from message
 	var chessReq ChessRequest
@@ -225,8 +224,8 @@ func handleJSONRPCMessageSend(w http.ResponseWriter, r *http.Request, request ma
 }
 
 // handleJSONRPCTasksSend handles the A2A tasks/send method
-func handleJSONRPCTasksSend(w http.ResponseWriter, r *http.Request, rawRequest map[string]interface{}, aiPlayer *AIPlayer, logger *log.Logger) {
-	logger.Printf("Received A2A tasks/send request")
+func handleJSONRPCTasksSend(w http.ResponseWriter, r *http.Request, rawRequest map[string]interface{}, aiPlayer *AIPlayer, logger *ColoredLogger) {
+	logger.Info("📋 %sReceived A2A tasks/send request%s", ColorPurple, ColorReset)
 
 	// For now, we'll handle this the same as message/send
 	// In a full implementation, this would create a task and return task status
@@ -271,22 +270,22 @@ func sendJSONRPCError(w http.ResponseWriter, code int, message, data string, id 
 }
 
 // processChessRequest processes a chess request and returns a move
-func processChessRequest(req ChessRequest, aiPlayer *AIPlayer, logger *log.Logger) (*ChessResponse, error) {
-	logger.Printf("🎮 [JSONRPCA2A] Processing chess request - Player: %s, Board state length: %d, History: %v",
-		req.PlayerColor, len(req.BoardState), req.GameHistory)
+func processChessRequest(req ChessRequest, aiPlayer *AIPlayer, logger *ColoredLogger) (*ChessResponse, error) {
+	logger.Info("🎮 %sProcessing chess request - Player: %s%s, Board: %d chars, History: %v",
+		ColorBlue, req.PlayerColor, ColorReset, len(req.BoardState), req.GameHistory)
 
 	// Set AI player color based on request
 	aiPlayer.Color = req.PlayerColor
-	logger.Printf("🎨 [JSONRPCA2A] AI player color set to: %s", aiPlayer.Color)
+	logger.Info("🎨 %sAI player color set to: %s%s", ColorPurple, aiPlayer.Color, ColorReset)
 
 	// Log board state for debugging
-	logger.Printf("📊 [JSONRPCA2A] Board state: %s", req.BoardState)
+	logger.Debug("📊 %sBoard state: %s%s", ColorCyan, req.BoardState, ColorReset)
 	if len(req.GameHistory) > 0 {
-		logger.Printf("📜 [JSONRPCA2A] Game history: %v", req.GameHistory)
+		logger.Debug("📜 %sGame history: %v%s", ColorYellow, req.GameHistory, ColorReset)
 	}
 
 	// Get AI move
-	logger.Printf("🤖 [JSONRPCA2A] Requesting AI move...")
+	logger.Info("🤖 %sRequesting AI move...%s", ColorGreen, ColorReset)
 	startTime := time.Now()
 
 	// Start a goroutine to log progress
@@ -303,7 +302,7 @@ func processChessRequest(req ChessRequest, aiPlayer *AIPlayer, logger *log.Logge
 				return
 			case <-ticker.C:
 				elapsed := time.Since(startTime)
-				logger.Printf("⏱️ [JSONRPCA2A] Still thinking... (elapsed: %v)", elapsed.Round(time.Second))
+				logger.Info("⏱️ %sStill thinking... (elapsed: %v)%s", ColorYellow, elapsed.Round(time.Second), ColorReset)
 			}
 		}
 	}()
@@ -314,11 +313,11 @@ func processChessRequest(req ChessRequest, aiPlayer *AIPlayer, logger *log.Logge
 	elapsed := time.Since(startTime)
 
 	if err != nil {
-		logger.Printf("❌ [JSONRPCA2A] AI move generation failed after %v: %v", elapsed, err)
+		logger.Error("❌ %sAI move generation failed after %v: %v%s", ColorRed, elapsed, err, ColorReset)
 		return nil, fmt.Errorf("AI move generation failed: %w", err)
 	}
 
-	logger.Printf("✅ [JSONRPCA2A] AI move generated successfully in %v: %s", elapsed, aiMove.Notation)
+	logger.Info("✅ %sAI move generated successfully in %v: %s%s", ColorGreen, elapsed, aiMove.Notation, ColorReset)
 
 	return &ChessResponse{
 		Move: aiMove.Notation,
@@ -327,7 +326,7 @@ func processChessRequest(req ChessRequest, aiPlayer *AIPlayer, logger *log.Logge
 
 // StartJSONRPCA2AServer starts the JSON-RPC A2A server
 func StartJSONRPCA2AServer(ollamaURL, model string, port int) error {
-	logger := log.New(log.Writer(), "[JSONRPCA2A] ", log.LstdFlags)
+	logger := NewA2ALogger()
 
 	server, err := NewJSONRPCA2AServer(ollamaURL, model, port, logger)
 	if err != nil {
