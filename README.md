@@ -6,9 +6,12 @@ A terminal-based chess game built with Go and Bubble Tea.
 
 - **Interactive TUI Mode**: Full-featured terminal user interface with colored board, piece selection, and move input
 - **Text Mode**: Simple text-based output for environments that don't support TUI or for automation
+- **AI Player**: Play against local AI powered by Ollama models
+- **Multiple Game Modes**: Human vs AI, AI vs AI, and Human vs Human
 - **Chess Notation Support**: Supports both long algebraic notation (e2e4) and short algebraic notation (Nc6, Kxe5)
 - **Castling**: Full castling support with proper move validation
 - **Move Validation**: Basic chess move validation for all piece types
+- **New Game Package**: Clean TUI implementation using the notnil/chess library for accurate chess logic
 
 ## Installation
 
@@ -17,6 +20,21 @@ go install github.com/charmbracelet/bubbles@latest
 go install github.com/charmbracelet/bubbletea@latest
 go install github.com/charmbracelet/lipgloss@latest
 go build -o bubblechess .
+```
+
+### AI Player Setup
+
+To use the AI player, you'll need to install and run Ollama:
+
+```bash
+# Install Ollama (macOS)
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Start Ollama service
+ollama serve
+
+# Pull a chess-capable model
+ollama pull llama3.2:3b
 ```
 
 ## Usage
@@ -83,6 +101,25 @@ export BUBBLECHESS_MODE=text
 BUBBLECHESS_MODE=text ./bubblechess
 ```
 
+### New Game Package
+
+The new `game` package provides a clean, modern TUI implementation that directly uses the `notnil/chess` library:
+
+```bash
+# Run the new game TUI
+go run cmd/game/main.go
+
+# Or run the example
+go run examples/game_example.go
+```
+
+The new game package features:
+- Beautiful Unicode chess piece rendering
+- Direct integration with the chess library for accurate rules
+- Clean separation of concerns (TUI vs chess logic)
+- Modern Bubble Tea TUI framework
+- Proper error handling and user feedback
+
 ### Sample Game Session (Text Mode)
 ```
 === BubbleChess (Text Mode) ===
@@ -110,6 +147,35 @@ The game is built with:
 - **Bubble Tea**: TUI framework
 - **Bubbles**: UI components
 - **Lipgloss**: Terminal styling
+
+### Project Structure
+
+```
+bubblechess/
+├── main.go              # Main chess game
+├── ai_player/           # AI player package
+│   ├── ai_player.go     # Core AI player implementation
+│   ├── config.go        # Configuration management
+│   ├── game_mode.go     # Game mode definitions
+│   └── README.md        # AI player documentation
+├── examples/            # Example programs
+│   └── ai_example.go    # AI player usage example
+├── ai_config.json       # AI player configuration
+└── README.md            # This file
+```
+
+## AI Player
+
+The AI player allows you to play chess against local AI models powered by Ollama. See the [AI Player README](ai_player/README.md) for detailed documentation.
+
+### Quick AI Example
+
+```bash
+# Test the AI player
+./ai_example
+
+# Or integrate with the main game (coming soon)
+```
 
 ## License
 
